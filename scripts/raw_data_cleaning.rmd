@@ -88,15 +88,14 @@ offline_scoring <- load_CSVs("offline scoring",FALSE)
 ```
 
 ```{r}
-# why are so few of them called typing?
-table(rounds$data.type)
-```
-
-```{r}
 # export player-rounds (this has the players)
 player_rounds %>% write_csv('../outputs/player_rounds.csv')
+# export the roudns
+rounds %>% write_csv('../outputs/rounds.csv')
 # export the stage data (this has the raw outputs)
 stages %>% write_csv('../outputs/stages.csv')
+# export the players
+players %>% write_csv('../outputs/players.csv')
 ```
 
 
@@ -204,6 +203,11 @@ player_conditions <- players |>
   select(-treatmentId, -gameId)
 ```
 
+```{r}
+player_conditions %>% write_csv("../outputs/player_conditions.csv")
+```
+
+
 ## Task instances
 ```{r}
 complexity_levels = c("Low","Medium","High")
@@ -260,18 +264,6 @@ typing <- player_conditions |>
 # |> write_csv('../outputs/raw_recruitment_info_for_explore.csv')
 ```
 
-```{r}
-typing <- str_split(typing, ",\\s*")[[1]] |> 
-  str_remove_all('^c\\(|\\)$') |> 
-  str_remove_all('"') |> 
-  str_trim()
-
-# now try the match
-rounds %>%
-  filter(roundId %in% typing)
-```
-
-
 ## Data preparation
 ```{r}
 raw_score_data <-
@@ -325,6 +317,103 @@ raw_score_data <-
   group_by(stageId, task, complexity, playerCount, wave, playerIds) |> 
   summarize(score = max(score), duration = min(duration), efficiency = max(efficiency)) |> 
   ungroup()
+```
+
+## Exploring how we can join raw data for certain tasks (e.g., around generating words, ideas)
+
+**Word Construction**
+- Letter list: data.constants [use dictionary to determine if all letters are present/word is correct]
+- Answers: data.wordsList
+**Unscramble Words**
+- Word list: data.constants [can create answer key]
+- Answers: data.userInputList	
+**Putting Food Into Categories**
+- Food List: data.constants [need GPT for this one?]
+- Answers: data.similaritiesList
+**Recall Association**
+- Word List: data.constants [has the ground truth answers]
+- Answers:data.recalledWords
+**Recall Word Lists**
+- Word List: data.constants [has the ground truth answers]
+- Answers: % TODO: maybe explore adding %
+
+```{r}
+metadata_map <- stages %>%
+  filter(data.type %in% c(
+    "WordConstruction", "UnscrambleWords", 
+    "PuttingFoodIntoCategories", "RecallAssociation", "RecallWordLists"
+  )) %>%
+  pivot_longer(
+    cols = starts_with("data") & !matches("^data\\.type$"),
+    names_to = "data_col",
+    values_to = "val",
+    values_transform = list(val = as.character)
+  ) %>%
+  group_by(data.type, data_col) %>%
+  filter(any(!is.na(val))) %>%
+  ungroup() %>%
+  distinct(data.type, data_col)
+
+# this is the set of columns with metadata for each game of this type
+metadata_map
+```
+
+get the key columns with the raw input data for each task
+```{r}
+food_into_categories <- stages %>%
+  filter(data.type %in% c(
+    "PuttingFoodIntoCategories"
+  )) %>% select(
+    c(
+      stageId, data.type, data.constants, data.similaritiesList
+    )
+  ) %>%
+  rename(
+    data.answers = data.similaritiesList
+  )
+word_construction <- stages%>%
+    filter(data.type %in% c(
+    "WordConstruction"
+  )) %>% select(
+    c(
+      stageId, data.type, data.constants, data.wordsList
+    )
+  ) %>%
+  rename(
+    data.answers = data.wordsList
+  )
+unscramble_words <- stages %>%
+  filter(data.type %in% c(
+    "UnscrambleWords"
+  )) %>% select(
+    c(
+      stageId, data.type, data.constants, data.userInputList
+    )
+  ) %>%
+  rename(
+    data.answers = data.userInputList
+  )
+recall_association <- stages %>%
+  filter(data.type %in% c(
+    "RecallAssociation"
+  ))%>% select(
+    c(
+      stageId, data.type, data.constants, data.recalledWords
+    )
+  ) %>%
+  rename(
+    data.answers = data.recalledWords
+  )
+```
+
+```{r}
+rbind(
+  food_into_categories,
+  word_construction,
+  unscramble_words,
+  recall_association
+) %>% drop_na() %>%
+  write_csv('../outputs/summable_answers_raw.csv')
 ```
 
 

@@ -2,3 +2,5 @@
 *__pycache__
 *.RData
 *.Rhistory
+api_keys/*
+data/panel.csv
